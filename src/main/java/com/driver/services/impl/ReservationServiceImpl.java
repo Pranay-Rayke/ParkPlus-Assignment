@@ -23,51 +23,90 @@ public class ReservationServiceImpl implements ReservationService {
     ParkingLotRepository parkingLotRepository3;
     @Override
     public Reservation reserveSpot(Integer userId, Integer parkingLotId, Integer timeInHours, Integer numberOfWheels) throws Exception {
-        if(parkingLotRepository3.existsById(parkingLotId) && userRepository3.existsById(userId)) {
-            List<Spot> spotList = parkingLotRepository3.findById(parkingLotId).get().getSpotList();
-            int totalPrice = Integer.MAX_VALUE;
-            boolean availableToBook = false;
-            int spotId = -1;
-            for (Spot spot : spotList) {
-                if (spot.getOccupied() == false) {
-                    if (spot.getSpotType().equals(SpotType.OTHERS) && numberOfWheels > 4) {
-                        availableToBook = true;
-                        if (spot.getPricePerHour() * timeInHours < totalPrice) {
-                            totalPrice = spot.getPricePerHour() * timeInHours;
-                            spotId = spot.getId();
-                        }
-                    } else if (numberOfWheels > 2 && (spot.getSpotType().equals(SpotType.FOUR_WHEELER) || spot.getSpotType().equals(SpotType.OTHERS))) {
-                        availableToBook = true;
-                        if (spot.getPricePerHour() * timeInHours < totalPrice) {
-                            totalPrice = spot.getPricePerHour() * timeInHours;
-                            spotId = spot.getId();
-                        }
-                    } else {
-                        availableToBook = true;
-                        if (spot.getPricePerHour() * timeInHours < totalPrice) {
-                            totalPrice = spot.getPricePerHour() * timeInHours;
-                            spotId = spot.getId();
-                        }
+
+        try{
+            if (!userRepository3.findById(userId).isPresent() || !parkingLotRepository3.findById(parkingLotId).isPresent()){
+                throw new Exception("Cannot make reservation");
+            }
+
+            //user and parkingLot exists
+            User user = userRepository3.findById(userId).get();
+            ParkingLot parkingLot = parkingLotRepository3.findById(parkingLotId).get();
+
+            List<Spot> spotList = parkingLot.getSpotList();
+
+            boolean checkSpot = false;
+
+            for (Spot spot: spotList){
+                if (!spot.getOccupied()){
+                    checkSpot = true;
+                    break;
+                }
+            }
+
+            if (!checkSpot){
+                throw new Exception("Cannot make reservation");
+            }
+
+            SpotType requestedSpotType;
+            if (numberOfWheels > 4){
+                requestedSpotType = SpotType.OTHERS;
+            }
+            else if (numberOfWheels > 2) {
+                requestedSpotType = SpotType.FOUR_WHEELER;
+            }
+            else {
+                requestedSpotType = SpotType.TWO_WHEELER;
+            }
+
+            checkSpot = false;
+            int minPrice = Integer.MAX_VALUE;
+            Spot minPriceSpot = null;
+
+            for (Spot spot: spotList){
+                if (requestedSpotType.equals(SpotType.OTHERS) && spot.getSpotType().equals(SpotType.OTHERS)){
+                    if (spot.getPricePerHour()* timeInHours < minPrice && !spot.getOccupied()){
+                        minPrice = spot.getPricePerHour()*timeInHours;
+                        checkSpot = true;
+                        minPriceSpot = spot;
+                    }
+                }
+                else if (requestedSpotType.equals(SpotType.FOUR_WHEELER) && (spot.getSpotType().equals(SpotType.OTHERS) || spot.getSpotType().equals(SpotType.FOUR_WHEELER))) {
+                    if (spot.getPricePerHour()* timeInHours < minPrice && !spot.getOccupied()){
+                        minPrice = spot.getPricePerHour()*timeInHours;
+                        checkSpot = true;
+                        minPriceSpot = spot;
+                    }
+                }
+                else if (requestedSpotType.equals(SpotType.TWO_WHEELER) && (spot.getSpotType().equals(SpotType.OTHERS) || spot.getSpotType().equals(SpotType.FOUR_WHEELER) || spot.getSpotType().equals(SpotType.TWO_WHEELER))){
+                    if (spot.getPricePerHour()* timeInHours < minPrice && !spot.getOccupied()){
+                        minPrice = spot.getPricePerHour()*timeInHours;
+                        checkSpot = true;
+                        minPriceSpot = spot;
                     }
                 }
             }
-            if(spotId!=-1){
-                Spot spot = spotRepository3.findById(spotId).get();
-                User user = userRepository3.findById(userId).get();
-                Reservation reservation = new Reservation();
-                reservation.setSpot(spot);
-                reservation.setUser(user);
-                spot.setOccupied(true);
-                reservation.setNumberOfHours(timeInHours);
-                spot.getReservationList().add(reservation);
-                user.getReservationList().add(reservation);
-                userRepository3.save(user);
-                spotRepository3.save(spot);
-                return reservation;
-            }else throw new Exception("Cannot make reservation");
+
+            if (!checkSpot){
+                throw new Exception("Cannot make reservation");
+            }
+
+            Reservation reservation = new Reservation();
+            minPriceSpot.setOccupied(true);
+            reservation.setSpot(minPriceSpot);
+            reservation.setNumberOfHours(timeInHours);
+            reservation.setUser(user);
+
+            minPriceSpot.getReservationList().add(reservation);
+            user.getReservationList().add(reservation);
+
+            userRepository3.save(user);
+            spotRepository3.save(minPriceSpot);
+
+            return reservation;
         }
-        else {
-            throw new Exception("Cannot make reservation");
+        catch (Exception e){
+            return null;
         }
     }
 }
